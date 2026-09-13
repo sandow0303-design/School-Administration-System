@@ -1,0 +1,51 @@
+name: Campus Course Scheduler Engine Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  solve-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 1. Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: 2. Setup Python Environment
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: 3. Execute Core Engine (POSIX Signal Protected)
+      run: |
+        python3 scheduler_cli.py > schedule_result.json
+        cat schedule_result.json
+
+    - name: 4. Upload Result Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: schedule-data
+        path: schedule_result.json
+
+    - name: 5. Deploy Dashboard to GitHub Pages
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: '.'
+
+  deploy-pages:
+    needs: solve-and-deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

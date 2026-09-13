@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>校園自動排課系統 Dashboard</title>
+    <style>
+        :root { --primary: #0056b3; --bg: #f8f9fa; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; background: #fff; padding: 24px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: var(--primary); font-size: 24px; border-bottom: 2px solid var(--primary); padding-bottom: 10px; }
+        .meta { display: flex; gap: 15px; margin-bottom: 20px; font-weight: bold; background: #e9ecef; padding: 10px; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #dee2e6; padding: 12px; text-align: left; }
+        th { background: #f1f3f5; }
+        tr:nth-child(even) { background: #f8f9fa; }
+        .badge { background: #28a745; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎓 校園排課結果 Dashboard</h1>
+        <div class="meta">
+            <div>狀態: <span class="badge" id="status">載入中...</span></div>
+            <div>運算耗時: <span id="time">-</span> ms</div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>時段</th>
+                    <th>教室</th>
+                    <th>課程名稱 (ID)</th>
+                    <th>授課教師</th>
+                    <th>班級</th>
+                </tr>
+            </thead>
+            <tbody id="schedule-body">
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // 自動載入 GitHub Pipeline 產出的 JSON Artifact
+        fetch('schedule_result.json')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('status').innerText = data.status;
+                document.getElementById('time').innerText = data.execution_time_ms;
+
+                const tbody = document.getElementById('schedule-body');
+                tbody.innerHTML = '';
+                
+                if(data.status === "SUCCESS") {
+                    data.schedule.forEach(item => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td><strong>${item.timeslot}</strong></td>
+                            <td>${item.classroom}</td>
+                            <td>${item.course_name} (${item.course_id})</td>
+                            <td>${item.teacher}</td>
+                            <td>${item.student_group}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            })
+            .catch(err => {
+                document.getElementById('status').innerText = 'ERROR';
+                document.getElementById('status').style.background = '#dc3545';
+                console.error(err);
+            });
+    </script>
+</body>
+</html>
