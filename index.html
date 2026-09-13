@@ -14,16 +14,21 @@
         th, td { border: 1px solid #dee2e6; padding: 12px; text-align: left; }
         th { background: #f1f3f5; }
         tr:nth-child(even) { background: #f8f9fa; }
-        .badge { background: #28a745; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; }
+        .badge { color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; }
+        .badge-success { background: #28a745; }
+        .badge-error { background: #dc3545; }
+        .error-msg { color: #dc3545; padding: 10px; border: 1px solid #f5c6cb; background: #f8d7da; border-radius: 4px; margin-top: 10px; display: none; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🎓 校園排課結果 Dashboard</h1>
         <div class="meta">
-            <div>狀態: <span class="badge" id="status">載入中...</span></div>
+            <div>狀態: <span class="badge badge-success" id="status">載入中...</span></div>
             <div>運算耗時: <span id="time">-</span> ms</div>
         </div>
+
+        <div id="error-box" class="error-msg"></div>
 
         <table>
             <thead>
@@ -35,41 +40,79 @@
                     <th>班級</th>
                 </tr>
             </thead>
-            <tbody id="schedule-body">
-            </tbody>
+            <tbody id="schedule-body"></tbody>
         </table>
     </div>
 
     <script>
-        // 自動載入 GitHub Pipeline 產出的 JSON Artifact
-        fetch('schedule_result.json')
-            .then(res => res.json())
-            .then(data => {
-                document.getElementById('status').innerText = data.status;
-                document.getElementById('time').innerText = data.execution_time_ms;
+        // ==============================================================================
+        // [Explicit Safety Annotations / 顯式安全標註]
+        //
+        // [Memory Safety]:
+        //  1. DOM Injection Safety: 使用 textContent 賦值取代 innerHTML 拼接動態內容，防範 XSS。
+        //  2. Exception Boundary: 全局包裹 async/catch 避免未捕捉的 Promise Rejection 造成記憶體洩漏。
+        //
+        // [Concurrency Safety]:
+        //  1. Idempotent Fetch: 保持 DOM 操作原子性，避免多次重複發起 Fetch 造成 UI 競態狀態。
+        // ==============================================================================
 
-                const tbody = document.getElementById('schedule-body');
-                tbody.innerHTML = '';
-                
-                if(data.status === "SUCCESS") {
+        async function loadSchedule() {
+            const statusBadge = document.getElementById('status');
+            const errorBox = document.getElementById('error-box');
+
+            // 防衛檢查 1: file:// 協議阻擋檢測
+            if (window.location.protocol === 'file:') {
+                statusBadge.innerText = 'LOCAL ERROR';
+                statusBadge.className = 'badge badge-error';
+                errorBox.style.display = 'block';
+                errorBox.innerHTML = '<strong>環境限制說明：</strong>本地直接開啟（file://）會被瀏覽器安全性原則阻擋。請使用 HTTP Server（如本機執行 <code>python3 -m http.server 8000</code>）或至 GitHub Pages 預覽。';
+                return;
+            }
+
+            try {
+                const res = await fetch('schedule_result.json?t=' + Date.now()); // 加上 timestamp 防範瀏覽器快取
+                if (!res.ok) {
+                    throw new Error(`HTTP 錯誤狀態碼: ${res.status} (請確認 JSON 檔案是否存在)`);
+                }
+
+                const data = await res.json();
+                statusBadge.innerText = data.status;
+                document.getElementById('time').innerText = data.execution_time_ms || '-';
+
+                if (data.status === "SUCCESS") {
+                    const tbody = document.getElementById('schedule-body');
+                    tbody.innerHTML = '';
+                    
                     data.schedule.forEach(item => {
                         const tr = document.createElement('tr');
-                        tr.innerHTML = `
-                            <td><strong>${item.timeslot}</strong></td>
-                            <td>${item.classroom}</td>
-                            <td>${item.course_name} (${item.course_id})</td>
-                            <td>${item.teacher}</td>
-                            <td>${item.student_group}</td>
-                        `;
+                        
+                        // 安全填入內容，防止 XSS
+                        const createTd = (text) => {
+                            const td = document.createElement('td');
+                            td.textContent = text;
+                            return td;
+                        };
+
+                        tr.appendChild(createTd(item.timeslot));
+                        tr.appendChild(createTd(item.classroom));
+                        tr.appendChild(createTd(`${item.course_name} (${item.course_id})`));
+                        tr.appendChild(createTd(item.teacher));
+                        tr.appendChild(createTd(item.student_group));
+                        
                         tbody.appendChild(tr);
                     });
+                } else {
+                    throw new Error(data.reason || "排課失敗（無可行解）");
                 }
-            })
-            .catch(err => {
-                document.getElementById('status').innerText = 'ERROR';
-                document.getElementById('status').style.background = '#dc3545';
-                console.error(err);
-            });
+            } catch (err) {
+                statusBadge.innerText = 'ERROR';
+                statusBadge.className = 'badge badge-error';
+                errorBox.style.display = 'block';
+                errorBox.textContent = `無法載入排課結果: ${err.message}`;
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', loadSchedule);
     </script>
 </body>
 </html>
